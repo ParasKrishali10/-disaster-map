@@ -162,9 +162,8 @@ document.getElementById("b-haz").textContent = hazard
 
 const map = L.map("map").setView([userLat, userLon], 13)
 
-// NEW — OSM Bright (closest to Google Maps look)
 L.tileLayer(
-    `https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_KEY}`,
+    `https://maps.geoapify.com/v1/tile/dark-matter/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_KEY}`,
     { attribution: "Geoapify | OpenStreetMap", maxZoom: 20 }
 ).addTo(map)
 
