@@ -97,21 +97,61 @@ const userLon  = parseFloat(params.get("lon"))    || 78.6906
 const hazard   = (params.get("hazard") || "GENERAL").toUpperCase()
 
 const HAZARD_CONFIG = {
-    FIRE:      { categories: "healthcare.hospital,amenity.fire_station,amenity.police",
-                 label: "&#128293; Forest Fire Alert",    color: "#e67e22" },
-    RAINFALL:  { categories: "healthcare.hospital,building.public,amenity.police",
-                 label: "&#127783; Heavy Rainfall Alert", color: "#2980b9" },
-    LANDSLIDE: { categories: "healthcare.hospital,amenity.police,building.public",
-                 label: "&#9968; Landslide Alert",        color: "#8e44ad" },
-    GENERAL:   { categories: "healthcare.hospital,amenity.police",
-                 label: "&#9888; Hazard Alert",           color: "#e74c3c" },
+    FIRE: {
+        categories: "healthcare.hospital,service.police,service.fire_station",
+        label: "🔥 Forest Fire Alert",
+        color: "#e67e22"
+    },
+
+    RAINFALL: {
+        categories: "healthcare.hospital,education.school,service.community_centre",
+        label: "🌧 Heavy Rainfall Alert",
+        color: "#2980b9"
+    },
+
+    LANDSLIDE: {
+        categories: "healthcare.hospital,service.police,education.school",
+        label: "⛰ Landslide Alert",
+        color: "#8e44ad"
+    },
+
+    GENERAL: {
+        categories: "healthcare.hospital,service.police",
+        label: "⚠ Hazard Alert",
+        color: "#e74c3c"
+    }
 }
 
 const CAT_STYLE = {
-    "healthcare.hospital":  { icon: "&#127973;", color: "#e74c3c", label: "Hospital"       },
-    "amenity.police":       { icon: "&#128110;", color: "#2980b9", label: "Police Station"  },
-    "amenity.fire_station": { icon: "&#128662;", color: "#e67e22", label: "Fire Station"    },
-    "building.public":      { icon: "&#127963;", color: "#27ae60", label: "Public Shelter"  },
+    "healthcare.hospital": {
+        icon: "🏥",
+        color: "#e74c3c",
+        label: "Hospital"
+    },
+
+    "service.police": {
+        icon: "👮",
+        color: "#2980b9",
+        label: "Police Station"
+    },
+
+    "service.fire_station": {
+        icon: "🚒",
+        color: "#e67e22",
+        label: "Fire Station"
+    },
+
+    "education.school": {
+        icon: "🏫",
+        color: "#27ae60",
+        label: "School Shelter"
+    },
+
+    "service.community_centre": {
+        icon: "🏛",
+        color: "#16a085",
+        label: "Community Centre"
+    }
 }
 
 const config = HAZARD_CONFIG[hazard] || HAZARD_CONFIG["GENERAL"]
