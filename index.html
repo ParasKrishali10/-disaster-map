@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disaster Safe Zones</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #0d0d0d; color: white;
+               height: 100vh; display: flex; flex-direction: column; }
+        #header { background: #1a0000; border-bottom: 2px solid #ff4d4d;
+                  padding: 10px 14px; flex-shrink: 0; }
+        #header h2 { color: #ff4d4d; font-size: 15px; }
+        #header p  { font-size: 11px; color: #aaa; margin-top: 3px; }
+        #info-bar  { background: #0a0a0a; border-bottom: 1px solid #222;
+                     padding: 6px 10px; display: flex; gap: 6px;
+                     overflow-x: auto; flex-shrink: 0; }
+        .badge { background: #1e1e1e; border: 1px solid #333; border-radius: 12px;
+                 padding: 3px 10px; font-size: 10px; color: #ccc; white-space: nowrap; }
+        #map { flex: 1; min-height: 0; }
+        #panel { background: #111; border-top: 2px solid #222;
+                 height: 220px; flex-shrink: 0; overflow: hidden;
+                 display: flex; flex-direction: column; }
+        #panel-title { padding: 8px 14px; background: #1a1a1a; font-size: 12px;
+                       font-weight: bold; color: #ccc; border-bottom: 1px solid #222;
+                       flex-shrink: 0; }
+        #place-list  { overflow-y: auto; flex: 1; }
+        .place-card  { display: flex; align-items: center; padding: 9px 14px;
+                       border-bottom: 1px solid #1a1a1a; gap: 10px;
+                       cursor: pointer; transition: background 0.15s; }
+        .place-card:hover { background: #1a1a1a; }
+        .place-card.active { background: #1e1e1e; }
+        .place-icon  { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+                       display: flex; align-items: center; justify-content: center;
+                       font-size: 16px; }
+        .place-info  { flex: 1; min-width: 0; }
+        .place-name  { font-size: 12px; font-weight: bold; color: #eee;
+                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .place-meta  { font-size: 10px; color: #888; margin-top: 2px; }
+        .nav-btn     { background: #c0392b; color: white; border: none;
+                       border-radius: 8px; padding: 7px 12px; font-size: 11px;
+                       font-weight: bold; cursor: pointer; white-space: nowrap;
+                       text-decoration: none; flex-shrink: 0; }
+        #loading     { position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+                       display: flex; flex-direction: column; align-items: center;
+                       justify-content: center; z-index: 9999; gap: 16px; }
+        .spinner     { width: 40px; height: 40px; border: 4px solid #333;
+                       border-top-color: #ff4d4d; border-radius: 50%;
+                       animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading p   { color: #ccc; font-size: 13px; }
+        .leaflet-popup-content-wrapper { background: #111; color: white;
+                                          border: 1px solid #333; border-radius: 8px; }
+        .leaflet-popup-tip            { background: #111; }
+        .leaflet-popup-content        { margin: 10px 14px; font-size: 12px; }
+        .popup-name   { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+        .popup-row    { color: #aaa; margin: 2px 0; }
+        .popup-navbtn { display: inline-block; margin-top: 8px; background: #c0392b;
+                        color: white; padding: 5px 12px; border-radius: 6px;
+                        text-decoration: none; font-size: 11px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <p id="loading-msg">Locating safe zones...</p>
+</div>
+
+<div id="header">
+    <h2>&#128721; DISASTER SAFE ZONES</h2>
+    <p id="hazard-label">Loading...</p>
+</div>
+
+<div id="info-bar">
+    <div class="badge" id="b-loc">&#128205; Loading...</div>
+    <div class="badge" id="b-haz">&#9888; Loading...</div>
+    <div class="badge" id="b-cnt">&#128737; Searching...</div>
+</div>
+
+<div id="map"></div>
+
+<div id="panel">
+    <div id="panel-title">&#128737; Nearest Safe Zones — tap to highlight, Navigate to go</div>
+    <div id="place-list"></div>
+</div>
+
+<script>
+const GEOAPIFY_KEY = "0f791c70d39e4167bb96468f2a8b3476"
+const RADIUS       = 15000
+
+const params   = new URLSearchParams(window.location.search)
+const userLat  = parseFloat(params.get("lat"))    || 30.1840
+const userLon  = parseFloat(params.get("lon"))    || 78.6906
+const hazard   = (params.get("hazard") || "GENERAL").toUpperCase()
+
+const HAZARD_CONFIG = {
+    FIRE:      { categories: "healthcare.hospital,amenity.fire_station,amenity.police",
+                 label: "&#128293; Forest Fire Alert",    color: "#e67e22" },
+    RAINFALL:  { categories: "healthcare.hospital,building.public,amenity.police",
+                 label: "&#127783; Heavy Rainfall Alert", color: "#2980b9" },
+    LANDSLIDE: { categories: "healthcare.hospital,amenity.police,building.public",
+                 label: "&#9968; Landslide Alert",        color: "#8e44ad" },
+    GENERAL:   { categories: "healthcare.hospital,amenity.police",
+                 label: "&#9888; Hazard Alert",           color: "#e74c3c" },
+}
+
+const CAT_STYLE = {
+    "healthcare.hospital":  { icon: "&#127973;", color: "#e74c3c", label: "Hospital"       },
+    "amenity.police":       { icon: "&#128110;", color: "#2980b9", label: "Police Station"  },
+    "amenity.fire_station": { icon: "&#128662;", color: "#e67e22", label: "Fire Station"    },
+    "building.public":      { icon: "&#127963;", color: "#27ae60", label: "Public Shelter"  },
+}
+
+const config = HAZARD_CONFIG[hazard] || HAZARD_CONFIG["GENERAL"]
+
+document.getElementById("hazard-label").innerHTML = config.label
+document.getElementById("b-loc").textContent = `${userLat.toFixed(4)}N  ${userLon.toFixed(4)}E`
+document.getElementById("b-haz").textContent = hazard
+
+const map = L.map("map").setView([userLat, userLon], 13)
+
+L.tileLayer(
+    `https://maps.geoapify.com/v1/tile/dark-matter/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_KEY}`,
+    { attribution: "Geoapify | OpenStreetMap", maxZoom: 20 }
+).addTo(map)
+
+const userIcon = L.divIcon({
+    html: `<div style="width:16px;height:16px;background:#ff4d4d;
+                border:3px solid white;border-radius:50%;
+                box-shadow:0 0 10px #ff4d4d;"></div>`,
+    iconSize: [16, 16], iconAnchor: [8, 8], className: ""
+})
+L.marker([userLat, userLon], { icon: userIcon })
+ .addTo(map)
+ .bindPopup("<b style='color:#ff4d4d'>&#128205; Your Location</b>")
+
+function getStyle(categories) {
+    for (const key of Object.keys(CAT_STYLE)) {
+        if ((categories || "").includes(key)) return CAT_STYLE[key]
+    }
+    return { icon: "&#128205;", color: "#888888", label: "Safe Zone" }
+}
+
+function setLoading(msg) {
+    document.getElementById("loading-msg").textContent = msg
+}
+
+function hideLoading() {
+    document.getElementById("loading").style.display = "none"
+}
+
+async function fetchPlaces() {
+    const url = `https://api.geoapify.com/v2/places` +
+        `?categories=${config.categories}` +
+        `&filter=circle:${userLon},${userLat},${RADIUS}` +
+        `&limit=12&apiKey=${GEOAPIFY_KEY}`
+    const res  = await fetch(url)
+    const data = await res.json()
+    return data.features || []
+}
+
+async function fetchRoute(toLat, toLon) {
+    try {
+        const url = `https://api.geoapify.com/v1/routing` +
+            `?waypoints=${userLat},${userLon}|${toLat},${toLon}` +
+            `&mode=drive&apiKey=${GEOAPIFY_KEY}`
+        const res  = await fetch(url)
+        const data = await res.json()
+        if (!data.features?.length) return null
+        const feat    = data.features[0]
+        const coords  = feat.geometry.coordinates[0]
+        const latlngs = coords.map(c => [c[1], c[0]])
+        return {
+            latlngs,
+            distKm: (feat.properties.distance / 1000).toFixed(1),
+            etaMin: Math.ceil(feat.properties.time / 60),
+        }
+    } catch { return null }
+}
+
+function makeMarkerIcon(style) {
+    return L.divIcon({
+        html: `<div style="width:32px;height:32px;background:${style.color};
+                    border:2px solid white;border-radius:50%;
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.5);">
+                    ${style.icon}
+               </div>`,
+        iconSize: [32, 32], iconAnchor: [16, 16], className: ""
+    })
+}
+
+let allRoutes  = []
+let allMarkers = []
+let activeIdx  = -1
+
+function highlightZone(idx) {
+    allRoutes.forEach((r, i) => {
+        if (r) r.setStyle({ opacity: i === idx ? 0.9 : 0.25,
+                            weight:  i === idx ? 4   : 2 })
+    })
+    document.querySelectorAll(".place-card").forEach((c, i) => {
+        c.classList.toggle("active", i === idx)
+    })
+    if (allMarkers[idx]) {
+        map.panTo(allMarkers[idx].getLatLng(), { animate: true })
+        allMarkers[idx].openPopup()
+    }
+    activeIdx = idx
+}
+
+async function main() {
+    try {
+        setLoading("Fetching nearby safe zones...")
+        const features = await fetchPlaces()
+        document.getElementById("b-cnt").textContent =
+            `${features.length} Safe Zones`
+
+        const list = document.getElementById("place-list")
+
+        for (let i = 0; i < features.length; i++) {
+            const feat  = features[i]
+            const pLat  = feat.geometry.coordinates[1]
+            const pLon  = feat.geometry.coordinates[0]
+            const props = feat.properties
+            const name  = props.name || props.address_line1 || "Safe Zone"
+            const addr  = props.address_line2 || ""
+            const style = getStyle(props.categories || "")
+
+            setLoading(`Loading route ${i + 1} of ${features.length}...`)
+            const route = await fetchRoute(pLat, pLon)
+
+            const distKm = route ? route.distKm
+                : (props.distance / 1000).toFixed(1)
+            const etaMin = route ? route.etaMin : "—"
+
+            let polyline = null
+            if (route) {
+                polyline = L.polyline(route.latlngs, {
+                    color: style.color, weight: 2,
+                    opacity: 0.3, dashArray: "6 4"
+                }).addTo(map)
+            }
+            allRoutes.push(polyline)
+
+            const navUrl = `https://www.google.com/maps/dir/${userLat},${userLon}/${pLat},${pLon}`
+
+            const marker = L.marker([pLat, pLon],
+                { icon: makeMarkerIcon(style) })
+                .addTo(map)
+                .bindPopup(`
+                    <div class="popup-name">${style.icon} ${name}</div>
+                    <div class="popup-row">&#128739; ${distKm} km away</div>
+                    <div class="popup-row">&#9203; ETA: ${etaMin} min by road</div>
+                    <a href="${navUrl}" target="_blank" class="popup-navbtn">
+                        &#128506; Navigate
+                    </a>
+                `)
+            marker.on("click", () => highlightZone(i))
+            allMarkers.push(marker)
+
+            const card = document.createElement("div")
+            card.className = "place-card"
+            card.innerHTML = `
+                <div class="place-icon"
+                     style="background:${style.color}22;border:1px solid ${style.color}">
+                    ${style.icon}
+                </div>
+                <div class="place-info">
+                    <div class="place-name">${name}</div>
+                    <div class="place-meta">
+                        &#128739; ${distKm} km &nbsp;|&nbsp; &#9203; ${etaMin} min
+                        ${addr ? "&nbsp;|&nbsp;" + addr : ""}
+                    </div>
+                </div>
+                <a href="${navUrl}" target="_blank" class="nav-btn">Navigate</a>
+            `
+            card.addEventListener("click", (e) => {
+                if (e.target.classList.contains("nav-btn")) return
+                highlightZone(i)
+            })
+            list.appendChild(card)
+        }
+
+        hideLoading()
+        if (features.length > 0) highlightZone(0)
+
+    } catch (err) {
+        setLoading("Error loading safe zones. Please check your connection.")
+        console.error(err)
+    }
+}
+
+main()
+</script>
+</body>
+</html>
